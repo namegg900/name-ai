@@ -1,0 +1,907 @@
+<!doctype html>
+<html lang="ms">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>name-ai</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23111113'/%3E%3Ctext x='50%25' y='52%25' dominant-baseline='middle' text-anchor='middle' font-size='30' font-family='Inter,Arial' fill='%23ff6b35'%3EN%3C/text%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+    <style>
+      :root {
+        --bg: #0c0c0d;
+        --sidebar: #111113;
+        --sidebar-border: #1c1c1f;
+        --text: #e4e4e7;
+        --muted: #8b8b8e;
+        --accent: #ff6b35;
+        --hover: #1a1a1f;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: 'Inter', sans-serif;
+        font-size: 13px;
+      }
+      body.compact .chat-scroll { padding-top: 16px; }
+      body.compact .user-bubble { padding: 10px 14px; }
+      .app { display: flex; height: 100vh; overflow: hidden; }
+      .sidebar {
+        width: 280px; background: var(--sidebar); border-right: 1px solid var(--sidebar-border);
+        display: flex; flex-direction: column; transition: transform 200ms ease;
+      }
+      .side-header { padding: 14px 12px; display:flex; justify-content:space-between; align-items:center; }
+      .brand { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+      .icon-btn, .danger-btn {
+        border: none; background: transparent; color: var(--muted); cursor: pointer; border-radius: 8px;
+        transition: all 120ms ease; font-family: inherit;
+      }
+      .icon-btn { width: 30px; height: 30px; font-size: 18px; }
+      .icon-btn:hover, .danger-btn:hover { background: var(--hover); color: var(--text); }
+      .icon-btn:active, .danger-btn:active { transform: scale(0.97); }
+      .side-tools { margin: 0 12px 8px; display:flex; gap:8px; }
+      .tool-btn { flex:1; border:1px solid #222226; border-radius: 10px; background:#121215; color:#b6b6bc; padding:8px 10px; cursor:pointer; transition:120ms ease; }
+      .tool-btn:hover { background:#17171b; color:#e4e4e7; }
+      .session-list {
+        flex:1; overflow:auto; padding: 4px 8px 10px;
+        scrollbar-width: thin; scrollbar-color: #2a2a30 transparent;
+      }
+      .session-item {
+        position:relative; display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:8px;
+        margin-bottom: 1px; cursor:pointer; transition: 120ms ease;
+      }
+      .session-item:hover { background:#16161a; }
+      .session-item.active { background:#1a1a20; }
+      .session-item.active::before {
+        content:''; position:absolute; left:4px; width:6px; height:6px; border-radius:50%; background: var(--accent);
+      }
+      .chat-ico { color:#555; }
+      .session-meta { overflow:hidden; flex:1; }
+      .session-name { font-size:13px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; }
+      .session-date { color:#555; font-size:11px; margin-top:2px; }
+      .menu-btn { opacity:0; transition:120ms ease; }
+      .session-item:hover .menu-btn { opacity:1; }
+      .side-footer { border-top:1px solid #1c1c1f; padding:10px; }
+      .danger-btn { width:100%; padding:8px 10px; text-align:left; font-size:12px; }
+
+      .main { flex:1; display:flex; flex-direction:column; background: var(--bg); }
+      .topbar { display:none; height:52px; border-bottom:1px solid #1a1a1f; padding:10px; align-items:center; gap:10px; }
+      .chat-scroll { flex:1; overflow:auto; padding: 28px min(9vw, 100px) 120px; scroll-behavior:smooth; }
+      .welcome h1 { margin: 0 0 8px; font-size: 32px; font-weight: 600; letter-spacing: -0.01em; }
+      .welcome p { margin:0 0 20px; color: var(--muted); font-size:15px; }
+      .suggestions { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:12px; max-width: 760px; }
+      .suggestion { border:1px solid #1e1e24; border-radius:12px; padding:16px; background:transparent; color:var(--text); text-align:left; cursor:pointer; transition:120ms ease; }
+      .suggestion:hover { border-color:#2a2a33; background:#111114; }
+
+      .msg { font-size:15px; line-height:1.65; }
+      @keyframes rise { from { opacity:.2; transform: translateY(8px);} to {opacity:1; transform: translateY(0);} }
+      .msg.user-wrap { display:flex; justify-content:flex-end; margin-bottom:18px; }
+      .user-bubble {
+        max-width:70%; background:#1e1e24; border:1px solid #2a2a33; border-radius:18px 4px 18px 18px;
+        padding:14px 18px; box-shadow:0 1px 2px rgba(0,0,0,.2);
+        white-space:pre-wrap;
+      }
+      .ai-group { margin-bottom:24px; display:flex; gap:10px; }
+      .avatar {
+        width:28px; height:28px; min-width:28px; border-radius:50%; background:#1a1a20; display:grid; place-items:center; color:#bdbdc2; font-weight:600;
+      }
+      .ai-content { padding:4px 0; max-width: 920px; width:100%; }
+      .timestamp { font-size:11px; color:#555; margin-top:6px; }
+      .typing { color:#555; animation:pulse 1.1s ease-in-out infinite; }
+      @keyframes pulse { 0%,100%{opacity:.45} 50%{opacity:1} }
+
+      .md p { margin:0 0 12px; }
+      .md strong { font-weight:600; }
+      .md em { font-style:italic; }
+      .md code { background:#1a1a1f; padding:0 6px; border-radius:4px; font-size:.9em; font-family:'JetBrains Mono', monospace; }
+      .md pre { margin:0; }
+      .code-wrap { background:#0a0a0d; border:1px solid #1a1a1f; border-radius:10px; overflow:hidden; margin:12px 0 14px; }
+      .code-head { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #1a1a1f; color:#8f8f95; font-size:12px; }
+      .copy-btn { border:1px solid #2a2a30; border-radius:7px; padding:4px 8px; background:transparent; color:#c4c4ca; cursor:pointer; transition:120ms ease; }
+      .copy-btn:hover { background:#17171b; }
+      .copy-btn:active { transform:scale(.97); }
+      .code-body { padding:16px; font-family:'JetBrains Mono', monospace; font-size:13px; overflow:auto; color:#e4e4e7; }
+      .kw { color:#ff6b35; } .str { color:#a5d6ff; } .com { color:#666; } .fn { color:#e4e4e7; }
+      .md a { color:var(--accent); text-decoration:underline; }
+      .md ul, .md ol { padding-left:20px; }
+      .md li::marker { color:#555; }
+      .md blockquote { margin:10px 0; border-left:2px solid #333; padding-left:14px; color:#999; }
+      .md h1,.md h2,.md h3,.md h4 { margin:20px 0 8px; font-weight:600; letter-spacing:-0.01em; }
+
+      .composer-wrap { position:sticky; bottom:0; padding: 0 min(9vw,100px) 20px; background: linear-gradient(180deg, transparent, rgba(12,12,13,.85) 35%, rgba(12,12,13,1)); }
+      .composer {
+        border:1px solid #222226; border-radius:14px; background:#141416; padding:10px 14px;
+        transition:120ms ease;
+      }
+      .composer:focus-within { border-color:#ff6b3522; box-shadow:0 0 0 3px rgba(255,107,53,0.1); }
+      textarea {
+        width:100%; min-height:44px; max-height:200px; resize:none; border:none; outline:none;
+        color:var(--text); background:transparent; font: 400 15px/1.65 Inter, sans-serif;
+      }
+      textarea::placeholder { color:#555; font-style:italic; }
+      .composer-row { display:flex; justify-content:space-between; align-items:center; margin-top:8px; }
+      .composer-tools { display:flex; gap:8px; margin-top:8px; align-items:center; }
+      .circle-btn {
+        width:30px; height:30px; border-radius:50%; border:1px solid #26262c; background:#121216; color:#c2c2c8;
+        cursor:pointer; transition:120ms ease; display:grid; place-items:center; font-size:12px;
+      }
+      .circle-btn:hover { background:#18181d; }
+      .circle-btn.on { border-color:#ff6b35; color:#ff6b35; box-shadow:0 0 0 2px rgba(255,107,53,.12); }
+      .attach-list { margin-top:6px; display:flex; flex-wrap:wrap; gap:6px; }
+      .attach-item { font-size:11px; background:#1a1a1f; color:#bbb; border:1px solid #2a2a30; border-radius:999px; padding:4px 9px; }
+      .canvas-box { margin-top:8px; border:1px solid #24242a; border-radius:10px; background:#121216; padding:8px; display:none; animation:rise 180ms ease; }
+      .canvas-box.open { display:block; }
+      .canvas-box textarea { min-height: 90px; font-size:13px; }
+      .counter { font-size:11px; color:#555; min-height:13px; }
+      .send-btn {
+        width:32px; height:32px; border:none; border-radius:50%; background:var(--accent); color:white; cursor:pointer;
+        transition:100ms ease; font-size:15px;
+      }
+      .send-btn:disabled { opacity:.25; cursor:not-allowed; }
+      .send-btn:active { transform:scale(.94); }
+
+      .progress { margin-top:8px; color:#777; font-size:11px; display:none; }
+      .name-gate {
+        position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center;
+        background: rgba(5,5,6,.78);
+      }
+      .name-gate.show { display:flex; }
+      .name-card {
+        width: min(460px, calc(100% - 24px)); background:#111113; border:1px solid #1f1f24; border-radius: 14px;
+        padding: 22px;
+      }
+      .name-card h2 { margin:0 0 6px; font-size:20px; font-weight:600; letter-spacing:-0.01em; }
+      .name-card p { margin:0 0 14px; color:#8b8b8e; font-size:13px; }
+      .name-input {
+        width:100%; border:1px solid #25252c; border-radius: 10px; background:#141416; color:#e4e4e7;
+        padding:11px 12px; outline:none; font: 400 14px Inter, sans-serif;
+      }
+      .name-input:focus { border-color:#ff6b3522; box-shadow:0 0 0 3px rgba(255,107,53,0.1); }
+      .name-submit {
+        margin-top:10px; width:100%; border:none; border-radius:10px; background:#ff6b35; color:white;
+        padding:10px 12px; cursor:pointer; font:500 13px Inter, sans-serif; transition:100ms ease;
+      }
+      .name-submit:active { transform:scale(.97); }
+      .settings-pane {
+        position: fixed; right: 0; top: 0; height: 100%; width: min(420px, 100vw); background:#101012;
+        border-left:1px solid #1e1e24; transform: translateX(100%); transition: transform 200ms ease; z-index: 32;
+        display:flex; flex-direction:column;
+      }
+      .settings-pane.open { transform: translateX(0); }
+      .set-head { padding:16px; border-bottom:1px solid #1f1f23; display:flex; justify-content:space-between; align-items:center; }
+      .set-body { overflow:auto; padding:12px; display:grid; gap:8px; }
+      .set-item { background:#141417; border:1px solid #202026; border-radius:10px; padding:10px; display:flex; justify-content:space-between; gap:8px; align-items:center; }
+      .set-item small { color:#777; display:block; margin-top:2px; }
+      .mini-switch { width:34px; height:20px; border-radius:999px; background:#2a2a2f; position:relative; cursor:pointer; }
+      .mini-switch::after { content:''; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#919198; transition:120ms ease; }
+      .mini-switch.on { background:rgba(255,107,53,.24); }
+      .mini-switch.on::after { left:16px; background:#ff6b35; }
+      .new-chat-modal {
+        position: fixed; inset: 0; background: rgba(0,0,0,.58); z-index: 35; display:none; align-items:center; justify-content:center;
+      }
+      .new-chat-modal.show { display:flex; }
+      .new-chat-card { width:min(480px,calc(100% - 24px)); background:#101012; border:1px solid #202026; border-radius:14px; padding:16px; }
+      .mode-grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px; }
+      .mode-btn {
+        border:1px solid #25252d; border-radius:12px; background:#141418; color:#ddd; padding:14px; text-align:left; cursor:pointer; transition:120ms ease;
+      }
+      .mode-btn:hover { border-color:#ff6b35; background:#18181d; }
+
+      @media (max-width: 767px) {
+        body { font-size:14px; }
+        .topbar { display:flex; }
+        .sidebar { position:fixed; inset:0 auto 0 0; z-index:12; height:100%; transform: translateX(-100%); }
+        .sidebar.open { transform: translateX(0); }
+        .overlay { position:fixed; inset:0; background: rgba(0,0,0,.45); z-index:11; display:none; }
+        .overlay.show { display:block; }
+        .chat-scroll { padding: 20px 14px 114px; }
+        .suggestions { grid-template-columns: 1fr; }
+        .user-bubble { max-width:85%; }
+        .composer-wrap { padding: 0 10px 10px; }
+        textarea { font-size:14px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar" id="sidebar">
+        <div class="side-header">
+          <div class="brand">name-ai</div>
+          <button class="icon-btn" id="newChatBtn" title="Perbualan Baru">+</button>
+        </div>
+        <div class="side-tools">
+          <button class="tool-btn" id="settingBtn">Tetapan</button>
+          <button class="tool-btn" id="importBtn">Import</button>
+        </div>
+        <div class="session-list" id="sessionList"></div>
+        <div class="side-footer">
+          <button class="danger-btn" id="clearAllBtn">Padam Semua</button>
+        </div>
+      </aside>
+      <div class="overlay" id="overlay"></div>
+      <main class="main">
+        <div class="topbar"><button class="icon-btn" id="hamburger">☰</button><strong>name-ai</strong></div>
+        <section class="chat-scroll" id="chatScroll"></section>
+        <div class="composer-wrap">
+          <div class="composer">
+            <textarea id="promptInput" placeholder="Tanya apa sahaja..."></textarea>
+            <div class="composer-tools">
+              <button class="circle-btn" id="fileBtn" title="Lampiran Fail">📎</button>
+              <button class="circle-btn" id="urlBtn" title="URL Auto">🔗</button>
+              <button class="circle-btn" id="deepBtn" title="DeepSearch">DS</button>
+              <button class="circle-btn" id="canvasBtn" title="Canvas">✎</button>
+            </div>
+            <div class="attach-list" id="attachList"></div>
+            <div class="canvas-box" id="canvasBox">
+              <textarea id="canvasInput" placeholder="Catatan kerja, struktur fail, checklist..."></textarea>
+            </div>
+            <div class="composer-row">
+              <div class="counter" id="counter"></div>
+              <button class="send-btn" id="sendBtn" disabled>➤</button>
+            </div>
+            <div class="progress" id="progressText"></div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="name-gate" id="nameGate">
+      <div class="name-card">
+        <h2>Siapa nama anda?</h2>
+        <p>name-ai akan ingat nama anda untuk setiap sesi seterusnya.</p>
+        <input class="name-input" id="nameInput" maxlength="40" placeholder="Masukkan nama anda" />
+        <button class="name-submit" id="saveNameBtn">Teruskan</button>
+      </div>
+    </div>
+    <aside class="settings-pane" id="settingsPane">
+      <div class="set-head"><strong>Tetapan Pengguna</strong><button class="icon-btn" id="closeSettingsBtn">✕</button></div>
+      <div class="set-body" id="settingsBody"></div>
+    </aside>
+    <div class="new-chat-modal" id="newChatModal">
+      <div class="new-chat-card">
+        <strong>Pilih jenis perbualan baru</strong>
+        <div style="color:#8f8f94;margin-top:4px">Identiti sama: <b>name-ai</b>, tapi cara kerja berbeza.</div>
+        <div class="mode-grid">
+          <button class="mode-btn" id="modeChatBtn"><b>Bicara AI</b><div style="font-size:12px;color:#888;margin-top:4px">Jawapan umum, analisis, diskusi biasa.</div></button>
+          <button class="mode-btn" id="modeCodeBtn"><b>Coding</b><div style="font-size:12px;color:#888;margin-top:4px">Fokus kod, debug, struktur fail, review teknikal.</div></button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const STORAGE_KEY = 'lumo_chat_data';
+      const USER_NAME_KEY = 'name_ai_user';
+      const SETTINGS_KEY = 'name_ai_settings';
+      const MAX_SESSIONS = 100;
+      const DEFAULT_SETTINGS = {
+        autoScroll: true, timestamps: true, compactMode: false, showAvatar: true, markdown: true,
+        syntaxHighlight: true, copyButtons: true, smoothStream: true, reduceMotion: false, saveDraft: true,
+        enterToSend: true, sidebarPinned: true, showSuggestions: true, autoRenameSession: true, smartCodingPrompt: true,
+        showProgress: true, pasteAsCodeHint: true, persistSidebar: true, sanitizeHtml: true, confirmDelete: true
+      };
+      const state = {
+        data: { sessions: {}, activeId: null, sidebarOpen: window.innerWidth >= 768 },
+        isStreaming: false,
+        userScrolledUp: false,
+        userName: '',
+        settings: { ...DEFAULT_SETTINGS },
+      };
+
+      const els = {
+        sidebar: document.getElementById('sidebar'),
+        overlay: document.getElementById('overlay'),
+        sessionList: document.getElementById('sessionList'),
+        chatScroll: document.getElementById('chatScroll'),
+        promptInput: document.getElementById('promptInput'),
+        sendBtn: document.getElementById('sendBtn'),
+        counter: document.getElementById('counter'),
+        newChatBtn: document.getElementById('newChatBtn'),
+        clearAllBtn: document.getElementById('clearAllBtn'),
+        hamburger: document.getElementById('hamburger'),
+        progressText: document.getElementById('progressText'),
+        settingBtn: document.getElementById('settingBtn'),
+        importBtn: document.getElementById('importBtn'),
+        nameGate: document.getElementById('nameGate'),
+        nameInput: document.getElementById('nameInput'),
+        saveNameBtn: document.getElementById('saveNameBtn'),
+        settingsPane: document.getElementById('settingsPane'),
+        settingsBody: document.getElementById('settingsBody'),
+        closeSettingsBtn: document.getElementById('closeSettingsBtn')
+      };
+      els.fileBtn = document.getElementById('fileBtn');
+      els.urlBtn = document.getElementById('urlBtn');
+      els.deepBtn = document.getElementById('deepBtn');
+      els.canvasBtn = document.getElementById('canvasBtn');
+      els.canvasBox = document.getElementById('canvasBox');
+      els.canvasInput = document.getElementById('canvasInput');
+      els.attachList = document.getElementById('attachList');
+      els.newChatModal = document.getElementById('newChatModal');
+      els.modeChatBtn = document.getElementById('modeChatBtn');
+      els.modeCodeBtn = document.getElementById('modeCodeBtn');
+      const hiddenFileInput = document.createElement('input');
+      hiddenFileInput.type = 'file';
+      hiddenFileInput.multiple = true;
+      hiddenFileInput.accept = '.txt,.md,.json,.csv,.js,.ts,.py,.java,.html,.css,.xml,.yml,.yaml,.log';
+
+      const formatTime = (iso) => new Date(iso).toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' });
+      const uid = () => `s_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+      const escapeHtml = (str='') => String(str ?? '').replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+      state.attachments = [];
+      state.tools = { deep: false, canvas: false, urlAuto: true };
+      state.pending = null;
+
+      function loadFromStorage() {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
+          if (parsed?.sessions) state.data = { sidebarOpen: true, ...parsed };
+        } catch (_) {}
+        try {
+          const s = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+          if (s) state.settings = { ...DEFAULT_SETTINGS, ...s };
+        } catch (_) {}
+        state.userName = (localStorage.getItem(USER_NAME_KEY) || '').trim();
+        if (!state.data.activeId || !state.data.sessions[state.data.activeId]) {
+          createSession('Perbualan Baru');
+        }
+      }
+
+      function saveToStorage() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data)); }
+      function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings)); }
+      function savePending() { localStorage.setItem('name_ai_pending', JSON.stringify(state.pending || null)); }
+      function loadPending() {
+        try { state.pending = JSON.parse(localStorage.getItem('name_ai_pending')); } catch (_) { state.pending = null; }
+      }
+      function renderAttachments() {
+        els.attachList.innerHTML = state.attachments.map(a => `<span class="attach-item">${escapeHtml(a.name)} (${a.sizeKb}KB)</span>`).join('');
+      }
+      async function readAttachment(file) {
+        const text = await file.text();
+        return {
+          name: file.name,
+          sizeKb: (file.size / 1024).toFixed(1),
+          content: text.slice(0, 22000)
+        };
+      }
+      function createSession(name = 'Perbualan Baru') {
+        const id = uid();
+        const now = new Date().toISOString();
+        state.data.sessions[id] = { id, name, mode: 'chat', createdAt: now, updatedAt: now, messages: [] };
+        state.data.activeId = id;
+        pruneSessions();
+        saveToStorage();
+        renderSidebar();
+        renderMessages();
+      }
+      function createSessionWithMode(mode = 'chat') {
+        const id = uid();
+        const now = new Date().toISOString();
+        const name = mode === 'coding' ? 'Perbualan Coding' : 'Perbualan Baru';
+        state.data.sessions[id] = { id, name, mode, createdAt: now, updatedAt: now, messages: [] };
+        state.data.activeId = id;
+        pruneSessions();
+        saveToStorage();
+        renderSidebar();
+        renderMessages();
+      }
+
+      function deleteSession(id) {
+        if (!state.data.sessions[id]) return;
+        if (state.settings.confirmDelete && !confirm('Padam perbualan ini?')) return;
+        delete state.data.sessions[id];
+        if (state.data.activeId === id) {
+          const next = Object.keys(state.data.sessions)[0];
+          if (next) state.data.activeId = next;
+          else createSession('Perbualan Baru');
+        }
+        saveToStorage();
+        renderSidebar();
+        renderMessages();
+      }
+
+      function renameSession(id, name) {
+        if (!state.data.sessions[id] || !name?.trim()) return;
+        state.data.sessions[id].name = name.trim();
+        state.data.sessions[id].updatedAt = new Date().toISOString();
+        saveToStorage();
+        renderSidebar();
+      }
+
+      function switchSession(id) {
+        if (!state.data.sessions[id]) return;
+        state.data.activeId = id;
+        saveToStorage();
+        renderSidebar();
+        renderMessages();
+        closeSidebarMobile();
+      }
+
+      function getActiveSession() { return state.data.sessions[state.data.activeId]; }
+      function getMessages() { return getActiveSession()?.messages ?? []; }
+
+      function addMessage(role, content) {
+        const s = getActiveSession();
+        if (!s) return;
+        const msg = { role, content, timestamp: new Date().toISOString() };
+        s.messages.push(msg);
+        s.updatedAt = msg.timestamp;
+        return msg;
+      }
+
+      function exportSession(id) {
+        const session = state.data.sessions[id];
+        if (!session) return;
+        const blob = new Blob([JSON.stringify(session, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${session.name.replace(/\s+/g, '_')}.json`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
+
+      function importSession(jsonFile) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const session = JSON.parse(reader.result);
+            if (!session?.messages) return;
+            const id = uid();
+            state.data.sessions[id] = { ...session, id, updatedAt: new Date().toISOString() };
+            state.data.activeId = id;
+            pruneSessions();
+            saveToStorage();
+            renderSidebar();
+            renderMessages();
+          } catch (_) {}
+        };
+        reader.readAsText(jsonFile);
+      }
+
+      function clearAll() {
+        state.data.sessions = {};
+        state.data.activeId = null;
+        createSession('Perbualan Baru');
+      }
+
+      function pruneSessions() {
+        const ids = Object.values(state.data.sessions)
+          .sort((a,b) => new Date(a.updatedAt) - new Date(b.updatedAt))
+          .map(s => s.id);
+        while (ids.length > MAX_SESSIONS) {
+          const oldest = ids.shift();
+          if (oldest !== state.data.activeId) delete state.data.sessions[oldest];
+        }
+      }
+
+      function syntaxHighlight(code) {
+        return escapeHtml(code)
+          .replace(/\/\/.*$/gm, '<span class="com">$&</span>')
+          .replace(/(".*?"|'.*?'|`[\s\S]*?`)/g, '<span class="str">$1</span>')
+          .replace(/\b(function|const|let|var|return|if|else|for|while|class|async|await|import|from|export|new|try|catch)\b/g, '<span class="kw">$1</span>')
+          .replace(/\b([a-zA-Z_$][\w$]*)(?=\()/g, '<span class="fn">$1</span>');
+      }
+
+      marked.setOptions({ breaks: true, gfm: true });
+      const renderer = new marked.Renderer();
+      renderer.code = (code, infostring = '') => {
+        const realCode = typeof code === 'object' ? (code?.text ?? JSON.stringify(code, null, 2)) : code;
+        const rawLang = typeof code === 'object' ? (code?.lang || infostring) : infostring;
+        const lang = (rawLang || 'kod').trim();
+        const highlighted = syntaxHighlight(realCode);
+        return `<div class="code-wrap"><div class="code-head"><span>${escapeHtml(lang)}</span><button class="copy-btn" data-copy="${encodeURIComponent(String(realCode))}">Salin</button></div><pre class="code-body"><code>${highlighted}</code></pre></div>`;
+      };
+
+      function renderSidebar() {
+        const sessions = Object.values(state.data.sessions).sort((a,b) => new Date(b.updatedAt)-new Date(a.updatedAt));
+        if (!sessions.length) {
+          els.sessionList.innerHTML = `<div style="padding:12px;color:#666">Tiada perbualan lagi</div>`;
+          return;
+        }
+
+        els.sessionList.innerHTML = sessions.map(s => `
+          <div class="session-item ${s.id===state.data.activeId?'active':''}" data-id="${s.id}">
+            <span class="chat-ico">◦</span>
+            <div class="session-meta">
+              <div class="session-name">${escapeHtml(s.name)}</div>
+              <div class="session-date">${new Date(s.updatedAt).toLocaleDateString('ms-MY')}</div>
+            </div>
+            <button class="icon-btn menu-btn" data-menu="${s.id}">⋯</button>
+          </div>
+        `).join('');
+      }
+
+      function renderMessages() {
+        const messages = getMessages();
+        if (!messages.length) {
+          els.chatScroll.innerHTML = `
+            <div class="welcome">
+              <h1>👋 Selamat Datang</h1>
+              <p>${state.userName ? `Hai ${escapeHtml(state.userName)}, ` : ''}name-ai sedia membantu. Tanya apa sahaja.</p>
+              <div class="suggestions" style="${state.settings.showSuggestions ? '' : 'display:none'}">
+                <button class="suggestion" data-suggest="Terangkan konsep API dalam bahasa mudah.">🔎 Terangkan API mudah</button>
+                <button class="suggestion" data-suggest="Bantu saya rancang jadual kerja 7 hari.">🗓️ Pelan mingguan</button>
+                <button class="suggestion" data-suggest="Tulis fungsi JavaScript untuk validasi borang.">💻 Bina fungsi JavaScript</button>
+                <button class="suggestion" data-suggest="Ringkaskan artikel panjang kepada poin penting.">🧠 Ringkasan pintar</button>
+              </div>
+            </div>`;
+          return;
+        }
+
+        let html = '';
+        let aiGroupOpen = false;
+        messages.forEach((m, i) => {
+          const next = messages[i+1];
+          if (m.role === 'user') {
+            if (aiGroupOpen) {
+              html += '</div></div>';
+              aiGroupOpen = false;
+            }
+            html += `<div class="msg user-wrap"><div class="user-bubble">${escapeHtml(m.content)}</div></div><div class="timestamp" style="text-align:right;margin-bottom:16px">${formatTime(m.timestamp)}</div>`;
+          } else {
+            const firstInGroup = !aiGroupOpen;
+            if (firstInGroup) html += `<div class="msg ai-group">${state.settings.showAvatar ? '<div class="avatar">L</div>' : '<div style="width:0"></div>'}<div class="ai-content">`;
+            const parsedRaw = state.settings.markdown ? marked.parse(m.content, { renderer }) : escapeHtml(m.content);
+            const parsed = state.settings.sanitizeHtml ? DOMPurify.sanitize(parsedRaw) : parsedRaw;
+            html += `<div class="md">${parsed}</div>${state.settings.timestamps ? `<div class="timestamp">${formatTime(m.timestamp)}</div>` : ''}`;
+            if (!next || next.role === 'user') {
+              html += '</div></div>';
+              aiGroupOpen = false;
+            } else {
+              aiGroupOpen = true;
+            }
+          }
+        });
+
+        els.chatScroll.innerHTML = html;
+        bindCopyButtons();
+        maybeAutoScroll();
+      }
+
+      function bindCopyButtons() {
+        document.querySelectorAll('.copy-btn').forEach(btn => {
+          btn.onclick = async () => {
+            const raw = decodeURIComponent(btn.dataset.copy || '');
+            await navigator.clipboard.writeText(raw).catch(() => {});
+            const old = btn.textContent;
+            btn.textContent = 'Disalin!';
+            setTimeout(() => (btn.textContent = old), 2000);
+          };
+        });
+      }
+
+      function maybeAutoScroll(force = false) {
+        if ((force || !state.userScrolledUp) && state.settings.autoScroll) {
+          els.chatScroll.scrollTop = els.chatScroll.scrollHeight;
+        }
+      }
+
+      function setStreamingUI(active, text='') {
+        state.isStreaming = active;
+        els.sendBtn.disabled = active || !els.promptInput.value.trim();
+        els.progressText.style.display = active && state.settings.showProgress ? 'block' : 'none';
+        els.progressText.textContent = text;
+      }
+
+      async function sendMessage() {
+        const raw = els.promptInput.value.trim();
+        if (!raw || state.isStreaming) return;
+
+        let message = raw;
+        const activeMode = getActiveSession()?.mode || 'chat';
+        const codingIntent = activeMode === 'coding';
+        const identity = `${state.userName ? `Nama pengguna: ${state.userName}. ` : ''}Identiti anda: name-ai, pembantu teknikal premium, sangat mahir semua bahasa pengaturcaraan moden dan legacy, jawapan padat-bernilai, tiada filler.\n\n`;
+        const canvasBlock = state.tools.canvas && els.canvasInput.value.trim() ? `\n\n[CANVAS]\n${els.canvasInput.value.trim()}` : '';
+        const deepInstruction = state.tools.deep ? `\n\nLakukan deep research ringkas: pecahkan masalah, semak andaian, beri jawapan berfasa.` : '';
+        const fileContext = state.attachments.length ? `\n\n[LAMPIRAN FAIL]\n${state.attachments.map(a => `### ${a.name}\n${a.content}`).join('\n\n')}` : '';
+        let urlContext = '';
+        const urls = raw.match(/https?:\/\/[^\s)]+/g) || [];
+        if (urls.length && state.tools.urlAuto !== false) {
+          setStreamingUI(true, 'Membaca URL...');
+          for (const url of urls.slice(0, 3)) {
+            try {
+              const resp = await fetch('/api/fetch-url', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url })
+              });
+              const json = await resp.json();
+              if (json?.content) urlContext += `\n\n[KANDUNGAN URL: ${url}]\n${json.content}`;
+            } catch (_) {}
+          }
+        }
+        if (codingIntent && state.settings.smartCodingPrompt) {
+          message = `${identity}Anda perlu jawab gaya jurutera perisian profesional:\n1) Beri kod dahulu (siap salin),\n2) Buat Analisis 1 (semak bug/logik),\n3) Buat Analisis 2 (semak edge case),\n4) Akhir sekali beri hasil akhir dalam format fail/folder yang jelas.\n\nPermintaan:\n${raw}${deepInstruction}${canvasBlock}${fileContext}${urlContext}`;
+        } else {
+          message = `${identity}Mode bicara biasa. Fokus pada jawapan natural, jelas, dan berguna.\n\n${raw}${deepInstruction}${canvasBlock}${fileContext}${urlContext}`;
+        }
+
+        addMessage('user', raw);
+        renderMessages();
+        els.promptInput.value = '';
+        resizeInput();
+        updateCounter();
+
+        const assistant = addMessage('assistant', '');
+        renderMessages();
+        setStreamingUI(true, 'Lumo menaip...');
+        let lastRender = 0;
+        state.pending = { sessionId: state.data.activeId, raw, startedAt: Date.now() };
+        savePending();
+
+        try {
+          const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message })
+          });
+
+          if (!response.ok || !response.body) throw new Error('Ralat sambungan');
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let done = false;
+
+          while (!done) {
+            const { value, done: rdDone } = await reader.read();
+            done = rdDone;
+            buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+            const chunks = buffer.split('\n\n');
+            buffer = chunks.pop() || '';
+
+            for (const chunk of chunks) {
+              const line = chunk.split('\n').find(l => l.startsWith('data:'));
+              if (!line) continue;
+              const payload = JSON.parse(line.replace(/^data:\s*/, ''));
+              if (payload.token) {
+                assistant.content += payload.token;
+                state.pending.assistant = assistant.content.slice(-6000);
+                savePending();
+                const now = Date.now();
+                if (!state.settings.smoothStream || now - lastRender > 120) {
+                  renderMessages();
+                  lastRender = now;
+                }
+              }
+              if (payload.error) throw new Error(payload.error);
+              if (payload.done) done = true;
+            }
+          }
+
+          getActiveSession().updatedAt = new Date().toISOString();
+          renderMessages();
+          saveToStorage();
+          state.pending = null;
+          savePending();
+          state.attachments = [];
+          renderAttachments();
+          els.canvasInput.value = '';
+        } catch (e) {
+          assistant.content = `${assistant.content ? assistant.content + '\n\n' : ''}**Ralat sambungan**`;
+          renderMessages();
+          state.pending = null;
+          savePending();
+        } finally {
+          setStreamingUI(false);
+          maybeAutoScroll(true);
+        }
+      }
+
+      function updateCounter() {
+        const len = els.promptInput.value.length;
+        els.counter.textContent = len > 3000 ? `${len} aksara` : '';
+        els.sendBtn.disabled = !els.promptInput.value.trim() || state.isStreaming;
+      }
+
+      function resizeInput() {
+        els.promptInput.style.height = 'auto';
+        els.promptInput.style.height = Math.min(els.promptInput.scrollHeight, 200) + 'px';
+      }
+
+      function openSidebarMobile() {
+        if (window.innerWidth >= 768) return;
+        state.data.sidebarOpen = true;
+        els.sidebar.classList.add('open');
+        els.overlay.classList.add('show');
+        saveToStorage();
+      }
+      function closeSidebarMobile() {
+        if (window.innerWidth >= 768) return;
+        state.data.sidebarOpen = false;
+        els.sidebar.classList.remove('open');
+        els.overlay.classList.remove('show');
+        saveToStorage();
+      }
+
+      els.newChatBtn.onclick = () => els.newChatModal.classList.add('show');
+      els.clearAllBtn.onclick = () => clearAll();
+      els.hamburger.onclick = openSidebarMobile;
+      els.overlay.onclick = closeSidebarMobile;
+      els.sendBtn.onclick = sendMessage;
+      els.promptInput.addEventListener('input', () => { updateCounter(); resizeInput(); });
+      els.promptInput.addEventListener('keydown', (e) => {
+        if (state.settings.enterToSend && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+      });
+      els.fileBtn.onclick = () => hiddenFileInput.click();
+      hiddenFileInput.onchange = async () => {
+        const files = Array.from(hiddenFileInput.files || []);
+        for (const f of files) {
+          try {
+            const parsed = await readAttachment(f);
+            state.attachments.push(parsed);
+          } catch (_) {}
+        }
+        renderAttachments();
+      };
+      els.urlBtn.onclick = () => {
+        state.tools.urlAuto = !state.tools.urlAuto;
+        els.urlBtn.classList.toggle('on', state.tools.urlAuto !== false);
+      };
+      els.deepBtn.onclick = () => {
+        state.tools.deep = !state.tools.deep;
+        els.deepBtn.classList.toggle('on', state.tools.deep);
+      };
+      els.canvasBtn.onclick = () => {
+        state.tools.canvas = !state.tools.canvas;
+        els.canvasBox.classList.toggle('open', state.tools.canvas);
+        els.canvasBtn.classList.toggle('on', state.tools.canvas);
+      };
+      els.modeChatBtn.onclick = () => {
+        createSessionWithMode('chat');
+        els.newChatModal.classList.remove('show');
+      };
+      els.modeCodeBtn.onclick = () => {
+        createSessionWithMode('coding');
+        els.newChatModal.classList.remove('show');
+      };
+
+      els.chatScroll.addEventListener('scroll', () => {
+        const distance = els.chatScroll.scrollHeight - els.chatScroll.scrollTop - els.chatScroll.clientHeight;
+        state.userScrolledUp = distance > 120;
+      });
+
+      document.addEventListener('click', (e) => {
+        if (e.target === els.newChatModal) {
+          els.newChatModal.classList.remove('show');
+        }
+        const sid = e.target.closest('.session-item')?.dataset.id;
+        if (sid) switchSession(sid);
+
+        const menu = e.target.closest('[data-menu]')?.dataset.menu;
+        if (menu) {
+          e.stopPropagation();
+          const choice = prompt('Taip: rename / delete / export / import');
+          if (choice === 'rename') {
+            const n = prompt('Nama baharu:');
+            if (n) renameSession(menu, n);
+          }
+          if (choice === 'delete') deleteSession(menu);
+          if (choice === 'export') exportSession(menu);
+          if (choice === 'import') {
+            const inp = document.createElement('input');
+            inp.type = 'file';
+            inp.accept = 'application/json';
+            inp.onchange = () => inp.files?.[0] && importSession(inp.files[0]);
+            inp.click();
+          }
+        }
+
+        const suggest = e.target.closest('[data-suggest]')?.dataset.suggest;
+        if (suggest) {
+          els.promptInput.value = suggest;
+          updateCounter();
+          resizeInput();
+          els.promptInput.focus();
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        const mod = e.ctrlKey || e.metaKey;
+        if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); els.promptInput.focus(); }
+        if (mod && e.key.toLowerCase() === 'n') { e.preventDefault(); els.newChatModal.classList.add('show'); }
+        if (mod && e.key.toLowerCase() === 'b') {
+          e.preventDefault();
+          if (window.innerWidth < 768) {
+            state.data.sidebarOpen ? closeSidebarMobile() : openSidebarMobile();
+          } else {
+            state.data.sidebarOpen = !state.data.sidebarOpen;
+            els.sidebar.style.transform = state.data.sidebarOpen ? 'translateX(0)' : 'translateX(-100%)';
+            saveToStorage();
+          }
+        }
+        if (e.key === 'Escape') {
+          els.promptInput.blur();
+          closeSidebarMobile();
+          els.newChatModal.classList.remove('show');
+        }
+      });
+
+      const settingLabels = {
+        autoScroll:'Auto-scroll', timestamps:'Paparkan timestamp', compactMode:'Mod padat', showAvatar:'Avatar AI',
+        markdown:'Render Markdown', syntaxHighlight:'Warna syntax kod', copyButtons:'Butang salin kod', smoothStream:'Stream lembut',
+        reduceMotion:'Kurang animasi', saveDraft:'Simpan draf input', enterToSend:'Enter untuk hantar', sidebarPinned:'Sidebar pin desktop',
+        showSuggestions:'Kad cadangan', autoRenameSession:'Auto-nama sesi', smartCodingPrompt:'Auto mod coding', showProgress:'Paparan progress',
+        pasteAsCodeHint:'Hint paste kod', persistSidebar:'Simpan status sidebar', sanitizeHtml:'Sanitasi HTML', confirmDelete:'Sahkan padam'
+      };
+      function renderSettings() {
+        document.body.classList.toggle('compact', !!state.settings.compactMode);
+        els.settingsBody.innerHTML = Object.keys(DEFAULT_SETTINGS).map((k) => `
+          <div class="set-item">
+            <div><div>${settingLabels[k]}</div><small>${k}</small></div>
+            <div class="mini-switch ${state.settings[k] ? 'on' : ''}" data-setting="${k}"></div>
+          </div>
+        `).join('');
+      }
+      els.settingBtn.onclick = () => { renderSettings(); els.settingsPane.classList.add('open'); };
+      els.closeSettingsBtn.onclick = () => els.settingsPane.classList.remove('open');
+      els.importBtn.onclick = () => {
+        const inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = 'application/json';
+        inp.onchange = () => inp.files?.[0] && importSession(inp.files[0]);
+        inp.click();
+      };
+      document.addEventListener('click', (e) => {
+        const setting = e.target.closest('[data-setting]')?.dataset.setting;
+        if (!setting) return;
+        state.settings[setting] = !state.settings[setting];
+        saveSettings();
+        renderSettings();
+        renderMessages();
+      });
+      els.saveNameBtn.onclick = () => {
+        const n = els.nameInput.value.trim();
+        if (!n) return;
+        state.userName = n;
+        localStorage.setItem(USER_NAME_KEY, n);
+        els.nameGate.classList.remove('show');
+        renderMessages();
+      };
+      els.nameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          els.saveNameBtn.click();
+        }
+      });
+
+      (async function init() {
+        loadFromStorage();
+        if (!state.userName) {
+          els.nameGate.classList.add('show');
+          setTimeout(() => els.nameInput.focus(), 0);
+        }
+        renderSettings();
+        els.urlBtn.classList.add('on');
+        if (state.settings.saveDraft) {
+          const draft = localStorage.getItem('name_ai_draft') || '';
+          els.promptInput.value = draft;
+          updateCounter();
+          resizeInput();
+          els.promptInput.addEventListener('input', () => localStorage.setItem('name_ai_draft', els.promptInput.value));
+        }
+        renderSidebar();
+        renderMessages();
+        loadPending();
+        if (state.pending?.sessionId && state.data.sessions[state.pending.sessionId]) {
+          switchSession(state.pending.sessionId);
+          addMessage('assistant', `Sesi tadi terhenti semasa AI menaip. Taip "sambung jawapan terakhir" untuk sambung semula.\n\n_Prompt terakhir: ${state.pending.raw}_`);
+          saveToStorage();
+          renderMessages();
+        }
+
+        if (window.innerWidth < 768 && state.data.sidebarOpen) openSidebarMobile();
+
+        try {
+          await fetch('/api/health');
+        } catch (_) {}
+      })();
+    </script>
+  </body>
+</html>
